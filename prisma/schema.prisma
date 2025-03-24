@@ -1,0 +1,164 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  role          UserRole  @default(MENTEE)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  profile       Profile?
+  mentorSessions    MentorshipSession[] @relation("MentorSessions")
+  menteeSessions    MentorshipSession[] @relation("MenteeSessions")
+  sentMessages      Message[]           @relation("SentMessages")
+  receivedMessages  Message[]           @relation("ReceivedMessages")
+}
+
+enum UserRole {
+  MENTEE
+  MENTOR
+  ADMIN
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Profile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  title       String?
+  bio         String?  @db.Text
+  experience  Int?
+  coverImage  String?
+  categories  Category[]
+  expertise   String[]
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  availability Availability[]
+  reviews     Review[]
+  experiences Experience[]
+}
+
+model Category {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  profiles  Profile[]
+  sessions  MentorshipSession[]
+}
+
+model Experience {
+  id          String   @id @default(cuid())
+  profileId   String
+  role        String
+  company     String
+  period      String
+  description String?  @db.Text
+  profile     Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model Review {
+  id          String   @id @default(cuid())
+  profileId   String
+  authorId    String?
+  authorName  String
+  rating      Int
+  comment     String   @db.Text
+  date        DateTime @default(now())
+  profile     Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model Availability {
+  id          String   @id @default(cuid())
+  profileId   String
+  dayOfWeek   Int      // 0-6 for Sunday-Saturday
+  startTime   String   // Format: "HH:MM"
+  endTime     String   // Format: "HH:MM"
+  profile     Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model MentorshipSession {
+  id          String   @id @default(cuid())
+  title       String
+  mentorId    String
+  menteeId    String
+  date        DateTime
+  time        String
+  duration    Int      @default(60) // in minutes
+  format      String
+  topics      String?  @db.Text
+  status      SessionStatus @default(PENDING)
+  message     String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  mentor      User     @relation("MentorSessions", fields: [mentorId], references: [id])
+  mentee      User     @relation("MenteeSessions", fields: [menteeId], references: [id])
+  categories  Category[]
+}
+
+enum SessionStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+model Message {
+  id          String   @id @default(cuid())
+  content     String   @db.Text
+  senderId    String
+  receiverId  String
+  read        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  
+  sender      User     @relation("SentMessages", fields: [senderId], references: [id])
+  receiver    User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
+}
+
