@@ -34,7 +34,7 @@ export default function LoginPage() {
       if (result?.error) {
         toast({
           title: "Error",
-          description: "Invalid email or password",
+          description: result.error,
           variant: "destructive",
         })
       } else {
@@ -119,4 +119,3 @@ export default function LoginPage() {
     </div>
   )
 }
-

@@ -1,13 +1,14 @@
-import NextAuth from "next-auth"
+import NextAuth, { type NextAuthOptions } from "next-auth"
 import { PrismaAdapter } from "@auth/prisma-adapter"
 import CredentialsProvider from "next-auth/providers/credentials"
 import GoogleProvider from "next-auth/providers/google"
-import { compare } from "bcrypt"
+import { compare } from "bcryptjs"
 
 import { db } from "@/lib/db"
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
+export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(db),
+  secret: process.env.NEXTAUTH_SECRET,
   session: { strategy: "jwt" },
   pages: {
     signIn: "/login",
@@ -26,8 +27,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
+        console.log("i am here")
         if (!credentials?.email || !credentials?.password) {
-          return null
+          throw new Error("Invalid credentials")
         }
 
         const user = await db.user.findUnique({
@@ -37,13 +39,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         })
 
         if (!user || !user.password) {
-          return null
+          throw new Error("User not found")
         }
 
         const isPasswordValid = await compare(credentials.password, user.password)
 
         if (!isPasswordValid) {
-          return null
+          throw new Error("Invalid password")
         }
 
         return {
@@ -71,5 +73,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return token
     },
   },
-})
+}
 
+const handler = NextAuth(authOptions)
+
+export { handler as GET, handler as POST }
