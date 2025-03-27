@@ -25,6 +25,9 @@ export async function GET() {
     },
   })
 
+
+  console.log("bimbo")
+
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 })
   }

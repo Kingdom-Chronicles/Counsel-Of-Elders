@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { db } from "@/lib/db"
-import { getSession } from "next-auth/react"
+import { authOptions } from "@/app/api/auth/[...nextauth]/route"
+// import { getSession } from "next-auth/react"
+import { getServerSession } from "next-auth/next"
+// import { authOptions } from "@/auth"
 
 const profileSchema = z.object({
   title: z.string().optional(),
@@ -16,7 +19,9 @@ const profileSchema = z.object({
 })
 
 export async function updateProfile(formData: FormData) {
-  const session = await getSession()
+  const session = await getServerSession(authOptions)
+
+  console.log("Session details:", session)
 
   if (!session || !session.user) {
     return {
@@ -42,87 +47,98 @@ export async function updateProfile(formData: FormData) {
 
   const { title, bio, experience, coverImage, expertise, categories } = validatedFields.data
 
-  // Get user profile
-  const profile = await db.profile.findUnique({
-    where: {
-      userId: session.user.id,
-    },
-  })
+  try {
+    // Get user profile
+    const profile = await db.profile.findUnique({
+      where: {
+        userId: session.user.id,
+      },
+    })
 
-  if (!profile) {
-    return {
-      error: "Profile not found",
+    if (!profile) {
+      return {
+        error: "Profile not found",
+      }
     }
-  }
 
-  // Update profile
-  await db.profile.update({
-    where: {
-      id: profile.id,
-    },
-    data: {
-      title,
-      bio,
-      experience,
-      coverImage,
-      expertise,
-    },
-  })
+    console.log("profile found",profile)
 
-  // Update categories if provided
-  if (categories && categories.length > 0) {
-    // First, remove all existing categories
+    // Update profile
     await db.profile.update({
       where: {
         id: profile.id,
       },
       data: {
-        categories: {
-          set: [],
-        },
+        title,
+        bio,
+        experience,
+        coverImage,
+        expertise,
       },
     })
 
-    // Then, add new categories
-    for (const categoryName of categories) {
-      // Find or create category
-      let category = await db.category.findUnique({
-        where: {
-          name: categoryName,
-        },
-      })
-
-      if (!category) {
-        category = await db.category.create({
-          data: {
-            name: categoryName,
-          },
-        })
-      }
-
-      // Connect category to profile
+    // Update categories if provided
+    if (categories && categories.length > 0) {
+      // First, remove all existing categories
       await db.profile.update({
         where: {
           id: profile.id,
         },
         data: {
           categories: {
-            connect: {
-              id: category.id,
-            },
+            set: [],
           },
         },
       })
+
+      // Then, add new categories
+      for (const categoryName of categories) {
+        // Find or create category
+        let category = await db.category.findUnique({
+          where: {
+            name: categoryName,
+          },
+        })
+
+        if (!category) {
+          category = await db.category.create({
+            data: {
+              name: categoryName,
+            },
+          })
+        }
+
+        // Connect category to profile
+        await db.profile.update({
+          where: {
+            id: profile.id,
+          },
+          data: {
+            categories: {
+              connect: {
+                id: category.id,
+              },
+            },
+          },
+        })
+      }
+    }
+
+    console.log("before i revalidate path")
+    revalidatePath("/profile")
+    console.log("after  i revalidate path profile")
+    revalidatePath("/mentor-portal/profile")
+    return { success: true }
+  } catch (error) {
+    console.error("Error updating profile:", error)
+    return {
+      error: "Failed to update profile. Please try again.",
     }
   }
-
-  revalidatePath("/profile")
-  revalidatePath("/mentor-portal/profile")
-  return { success: true }
 }
 
 export async function addExperience(formData: FormData) {
-  const session = await getSession()
+  const session = await getServerSession(authOptions)
 
   if (!session || !session.user) {
     return {
@@ -171,7 +187,7 @@ export async function addExperience(formData: FormData) {
 }
 
 export async function updateAvailability(availabilityData: any) {
-  const session = await getSession()
+  const session = await getServerSession(authOptions)
 
   if (!session || !session.user) {
     return {

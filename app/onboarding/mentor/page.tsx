@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, ArrowRight, Check, Loader2 } from "lucide-react"
@@ -28,6 +28,18 @@ export default function MentorOnboarding() {
   })
   const [newExpertise, setNewExpertise] = useState("")
   const [newCategory, setNewCategory] = useState("")
+  const [redirectTriggered, setRedirectTriggered] = useState(false)
+
+  // Effect to handle redirection after successful profile update
+  useEffect(() => {
+    if (redirectTriggered) {
+      const redirectTimer = setTimeout(() => {
+        router.push("/mentor-portal")
+      }, 1500)
+
+      return () => clearTimeout(redirectTimer)
+    }
+  }, [redirectTriggered, router])
 
   const handleNext = () => {
     if (step === 1 && !profile.title) {
@@ -86,26 +98,31 @@ export default function MentorOnboarding() {
         formData.append("categories", category)
       })
 
-      const result = await updateProfile(formData)
+      console.log("Submitting profile data...")
+      const response = await updateProfile(formData)
+      console.log("Profile update result:", response)
 
-      if (result.error) {
-        throw new Error(result.error)
+      if (response.success) {
+        toast({
+          title: "Profile setup complete",
+          description: "Your mentor profile has been created successfully",
+        })
+        setRedirectTriggered(true)
+      } else {
+        console.error(response.error)
+        toast({
+          title: "Error",
+          description: response.error || "Failed to set up profile. Please try again.",
+          variant: "destructive",
+        })
       }
-
-      toast({
-        title: "Profile setup complete",
-        description: "Your mentor profile has been created successfully",
-      })
-
-      // Redirect to mentor portal
-      router.push("/mentor-portal")
     } catch (error) {
+      console.error("Error in handleComplete:", error)
       toast({
         title: "Error",
         description: error.message || "Failed to set up profile. Please try again.",
         variant: "destructive",
       })
-    } finally {
       setIsSaving(false)
     }
   }

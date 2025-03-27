@@ -67,8 +67,6 @@ export async function middleware(request: NextRequest) {
 
 // Helper function to check if user needs onboarding
 async function checkIfNeedsOnboarding(userId: string, role: string): Promise<boolean> {
-  // This would typically be a database check
-  // For now, we'll make a fetch request to our API
   try {
     const response = await fetch(`${process.env.NEXTAUTH_URL}/api/me/profile`)
     if (!response.ok) {
@@ -86,6 +84,7 @@ async function checkIfNeedsOnboarding(userId: string, role: string): Promise<boo
     return false
   } catch (error) {
     // If there's an error, assume onboarding is needed
+    console.error("Error checking if user needs onboarding:", error)
     return true
   }
 }
