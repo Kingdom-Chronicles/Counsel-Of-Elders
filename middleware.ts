@@ -11,17 +11,42 @@ export async function middleware(request: NextRequest) {
   // Public paths that don't require authentication
   const publicPaths = ["/", "/login", "/signup", "/about", "/how-it-works", "/contact"]
 
-  // Check if the path is public
-  if (publicPaths.some((path) => request.nextUrl.pathname === path)) {
+  // Onboarding paths
+  const onboardingPaths = ["/onboarding/mentor", "/onboarding/mentee"]
+
+  // Check if the path is public or onboarding
+  if (
+    publicPaths.some((path) => request.nextUrl.pathname === path) ||
+    onboardingPaths.some((path) => request.nextUrl.pathname === path)
+  ) {
     return NextResponse.next()
+  }
+
+  // If not authenticated, redirect to login
+  if (!isAuthenticated) {
+    return NextResponse.redirect(new URL("/login", request.url))
+  }
+
+  // Check if user needs onboarding
+  const needsOnboarding = await checkIfNeedsOnboarding(token.id as string, token.role as string)
+
+  if (needsOnboarding) {
+    // Don't redirect if already on onboarding page
+    if (onboardingPaths.some((path) => request.nextUrl.pathname === path)) {
+      return NextResponse.next()
+    }
+
+    // Redirect to appropriate onboarding page
+    if (isMentor) {
+      return NextResponse.redirect(new URL("/onboarding/mentor", request.url))
+    } else if (isMentee) {
+      return NextResponse.redirect(new URL("/onboarding/mentee", request.url))
+    }
   }
 
   // Paths that require mentor role
   const mentorPaths = ["/mentor-portal", "/mentor-messages"]
   if (mentorPaths.some((path) => request.nextUrl.pathname.startsWith(path))) {
-    if (!isAuthenticated) {
-      return NextResponse.redirect(new URL("/login", request.url))
-    }
     if (!isMentor) {
       return NextResponse.redirect(new URL("/dashboard", request.url))
     }
@@ -31,21 +56,38 @@ export async function middleware(request: NextRequest) {
   // Paths that require mentee role
   const menteePaths = ["/dashboard", "/mentors", "/messages"]
   if (menteePaths.some((path) => request.nextUrl.pathname.startsWith(path))) {
-    if (!isAuthenticated) {
-      return NextResponse.redirect(new URL("/login", request.url))
-    }
     if (!isMentee) {
       return NextResponse.redirect(new URL("/mentor-portal", request.url))
     }
     return NextResponse.next()
   }
 
-  // Default: require authentication for all other routes
-  if (!isAuthenticated) {
-    return NextResponse.redirect(new URL("/login", request.url))
-  }
-
   return NextResponse.next()
+}
+
+// Helper function to check if user needs onboarding
+async function checkIfNeedsOnboarding(userId: string, role: string): Promise<boolean> {
+  // This would typically be a database check
+  // For now, we'll make a fetch request to our API
+  try {
+    const response = await fetch(`${process.env.NEXTAUTH_URL}/api/me/profile`)
+    if (!response.ok) {
+      return true
+    }
+
+    const data = await response.json()
+
+    // Check if essential profile fields are filled
+    if (role === "MENTOR") {
+      return !data.title || !data.bio || !data.categories || data.categories.length === 0
+    }
+
+    // For mentees, we might have different requirements
+    return false
+  } catch (error) {
+    // If there's an error, assume onboarding is needed
+    return true
+  }
 }
 
 export const config = {

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { db } from "@/lib/db"
-import { auth } from "@/auth"
+import { getSession } from "next-auth/react"
 
 const messageSchema = z.object({
   content: z.string().min(1, "Message is required"),
@@ -12,7 +12,7 @@ const messageSchema = z.object({
 })
 
 export async function sendMessage(formData: FormData) {
-  const session = await auth()
+  const session = await getSession()
 
   if (!session || !session.user) {
     return {
@@ -49,7 +49,7 @@ export async function sendMessage(formData: FormData) {
 }
 
 export async function markMessageAsRead(messageId: string) {
-  const session = await auth()
+  const session = await getSession()
 
   if (!session || !session.user) {
     return {

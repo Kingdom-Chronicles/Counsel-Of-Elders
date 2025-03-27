@@ -124,23 +124,25 @@ model Availability {
 }
 
 model MentorshipSession {
-  id          String   @id @default(cuid())
-  title       String
-  mentorId    String
-  menteeId    String
-  date        DateTime
-  time        String
-  duration    Int      @default(60) // in minutes
-  format      String
-  topics      String?  @db.Text
-  status      SessionStatus @default(PENDING)
-  message     String?  @db.Text
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(cuid())
+  title         String
+  mentorId      String
+  menteeId      String
+  date          DateTime
+  time          String
+  duration      Int      @default(60) // in minutes
+  format        String
+  topics        String?  @db.Text
+  status        SessionStatus @default(PENDING)
+  message       String?  @db.Text
+  meetingLink   String?  // Google Meet link
+  googleEventId String?  // Google Calendar event ID
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
   
-  mentor      User     @relation("MentorSessions", fields: [mentorId], references: [id])
-  mentee      User     @relation("MenteeSessions", fields: [menteeId], references: [id])
-  categories  Category[]
+  mentor        User     @relation("MentorSessions", fields: [mentorId], references: [id])
+  mentee        User     @relation("MenteeSessions", fields: [menteeId], references: [id])
+  categories    Category[]
 }
 
 enum SessionStatus {

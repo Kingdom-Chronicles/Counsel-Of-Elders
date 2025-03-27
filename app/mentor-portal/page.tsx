@@ -1,16 +1,134 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Calendar, Check, Clock, Edit, MessageSquare, User, X } from "lucide-react"
+import { Calendar, Check, Clock, Edit, Loader2, MessageSquare, User, X } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useToast } from "@/components/ui/use-toast"
+import { updateSessionStatus } from "@/app/actions/meetings"
 
 export default function MentorPortalPage() {
-  const [availabilityMode, setAvailabilityMode] = useState("view") // view or edit
+  const { toast } = useToast()
+  const [availabilityMode, setAvailabilityMode] = useState("view")
+  const [isLoading, setIsLoading] = useState(true)
+  const [sessions, setSessions] = useState({
+    upcoming: [],
+    requests: [],
+    past: [],
+  })
+  const [stats, setStats] = useState({
+    activeMentees: 0,
+    sessionsCompleted: 0,
+    hoursOfMentorship: 0,
+    averageRating: 0,
+  })
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Fetch upcoming sessions
+        const upcomingResponse = await fetch("/api/sessions?status=CONFIRMED&role=mentor")
+        const upcomingSessions = await upcomingResponse.json()
+
+        // Fetch session requests
+        const requestsResponse = await fetch("/api/sessions?status=PENDING&role=mentor")
+        const requestSessions = await requestsResponse.json()
+
+        // Fetch past sessions
+        const pastResponse = await fetch("/api/sessions?status=COMPLETED&role=mentor")
+        const pastSessions = await pastResponse.json()
+
+        // Fetch stats
+        const statsResponse = await fetch("/api/me/stats")
+        const statsData = await statsResponse.json()
+
+        setSessions({
+          upcoming: upcomingSessions,
+          requests: requestSessions,
+          past: pastSessions,
+        })
+
+        setStats(statsData)
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to load data. Please try again.",
+          variant: "destructive",
+        })
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [toast])
+
+  const handleAcceptSession = async (sessionId) => {
+    try {
+      const result = await updateSessionStatus(sessionId, "CONFIRMED")
+
+      if (result.error) {
+        throw new Error(result.error)
+      }
+
+      // Update local state
+      setSessions((prev) => ({
+        ...prev,
+        requests: prev.requests.filter((session) => session.id !== sessionId),
+        upcoming: [...prev.upcoming, prev.requests.find((session) => session.id === sessionId)],
+      }))
+
+      toast({
+        title: "Session confirmed",
+        description: "The session has been confirmed and added to your calendar.",
+      })
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to confirm session. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleDeclineSession = async (sessionId) => {
+    try {
+      const result = await updateSessionStatus(sessionId, "CANCELLED")
+
+      if (result.error) {
+        throw new Error(result.error)
+      }
+
+      // Update local state
+      setSessions((prev) => ({
+        ...prev,
+        requests: prev.requests.filter((session) => session.id !== sessionId),
+      }))
+
+      toast({
+        title: "Session declined",
+        description: "The session request has been declined.",
+      })
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to decline session. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -25,7 +143,7 @@ export default function MentorPortalPage() {
           <Link className="text-sm font-medium hover:underline underline-offset-4" href="/mentor-portal/mentees">
             Mentees
           </Link>
-          <Link className="text-sm font-medium hover:underline underline-offset-4" href="/mentor-portal/messages">
+          <Link className="text-sm font-medium hover:underline underline-offset-4" href="/mentor-messages">
             Messages
           </Link>
         </nav>
@@ -54,25 +172,48 @@ export default function MentorPortalPage() {
               <TabsTrigger value="past">Past Sessions</TabsTrigger>
             </TabsList>
             <TabsContent value="upcoming" className="mt-6">
-              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                {upcomingSessions.map((session) => (
-                  <SessionCard key={session.id} session={session} type="upcoming" />
-                ))}
-              </div>
+              {sessions.upcoming.length > 0 ? (
+                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                  {sessions.upcoming.map((session) => (
+                    <SessionCard key={session.id} session={session} type="upcoming" />
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <p className="text-gray-500">You have no upcoming sessions.</p>
+                </div>
+              )}
             </TabsContent>
             <TabsContent value="requests" className="mt-6">
-              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                {sessionRequests.map((session) => (
-                  <RequestCard key={session.id} session={session} />
-                ))}
-              </div>
+              {sessions.requests.length > 0 ? (
+                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                  {sessions.requests.map((session) => (
+                    <RequestCard
+                      key={session.id}
+                      session={session}
+                      onAccept={() => handleAcceptSession(session.id)}
+                      onDecline={() => handleDeclineSession(session.id)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <p className="text-gray-500">You have no pending session requests.</p>
+                </div>
+              )}
             </TabsContent>
             <TabsContent value="past" className="mt-6">
-              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                {pastSessions.map((session) => (
-                  <SessionCard key={session.id} session={session} type="past" />
-                ))}
-              </div>
+              {sessions.past.length > 0 ? (
+                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                  {sessions.past.map((session) => (
+                    <SessionCard key={session.id} session={session} type="past" />
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <p className="text-gray-500">You have no past sessions.</p>
+                </div>
+              )}
             </TabsContent>
           </Tabs>
 
@@ -321,7 +462,7 @@ export default function MentorPortalPage() {
                       <User className="h-6 w-6 text-primary" />
                     </div>
                     <div>
-                      <p className="text-2xl font-bold">24</p>
+                      <p className="text-2xl font-bold">{stats.activeMentees}</p>
                       <p className="text-sm text-gray-500">Active Mentees</p>
                     </div>
                   </div>
@@ -330,7 +471,7 @@ export default function MentorPortalPage() {
                       <Calendar className="h-6 w-6 text-primary" />
                     </div>
                     <div>
-                      <p className="text-2xl font-bold">124</p>
+                      <p className="text-2xl font-bold">{stats.sessionsCompleted}</p>
                       <p className="text-sm text-gray-500">Sessions Completed</p>
                     </div>
                   </div>
@@ -339,7 +480,7 @@ export default function MentorPortalPage() {
                       <Clock className="h-6 w-6 text-primary" />
                     </div>
                     <div>
-                      <p className="text-2xl font-bold">186</p>
+                      <p className="text-2xl font-bold">{stats.hoursOfMentorship}</p>
                       <p className="text-sm text-gray-500">Hours of Mentorship</p>
                     </div>
                   </div>
@@ -348,7 +489,7 @@ export default function MentorPortalPage() {
                       <MessageSquare className="h-6 w-6 text-primary" />
                     </div>
                     <div>
-                      <p className="text-2xl font-bold">4.9/5</p>
+                      <p className="text-2xl font-bold">{stats.averageRating}/5</p>
                       <p className="text-sm text-gray-500">Average Rating</p>
                     </div>
                   </div>
@@ -419,6 +560,20 @@ function SessionCard({ session, type }) {
             <p className="text-sm text-gray-500">{session.topics}</p>
           </div>
         )}
+
+        {session.meetingLink && (
+          <div className="mt-4 p-3 bg-green-50 rounded-md">
+            <p className="text-sm font-medium mb-1">Google Meet Link:</p>
+            <a
+              href={session.meetingLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-blue-600 hover:underline break-all"
+            >
+              {session.meetingLink}
+            </a>
+          </div>
+        )}
       </CardContent>
       <CardFooter className="flex gap-2">
         {type === "upcoming" && (
@@ -426,7 +581,11 @@ function SessionCard({ session, type }) {
             <Button variant="outline" className="flex-1">
               Reschedule
             </Button>
-            <Button className="flex-1">Join Session</Button>
+            <Button className="flex-1" asChild>
+              <a href={session.meetingLink} target="_blank" rel="noopener noreferrer">
+                Join Session
+              </a>
+            </Button>
           </>
         )}
         {type === "past" && (
@@ -442,7 +601,21 @@ function SessionCard({ session, type }) {
   )
 }
 
-function RequestCard({ session }) {
+function RequestCard({ session, onAccept, onDecline }) {
+  const [isLoading, setIsLoading] = useState(false)
+
+  const handleAccept = async () => {
+    setIsLoading(true)
+    await onAccept()
+    setIsLoading(false)
+  }
+
+  const handleDecline = async () => {
+    setIsLoading(true)
+    await onDecline()
+    setIsLoading(false)
+  }
+
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -493,95 +666,28 @@ function RequestCard({ session }) {
         )}
       </CardContent>
       <CardFooter className="flex gap-2">
-        <Button variant="outline" className="flex-1" size="sm">
-          <X className="h-4 w-4 mr-2" />
-          Decline
+        <Button variant="outline" className="flex-1" size="sm" onClick={handleDecline} disabled={isLoading}>
+          {isLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <>
+              <X className="h-4 w-4 mr-2" />
+              Decline
+            </>
+          )}
         </Button>
-        <Button className="flex-1" size="sm">
-          <Check className="h-4 w-4 mr-2" />
-          Accept
+        <Button className="flex-1" size="sm" onClick={handleAccept} disabled={isLoading}>
+          {isLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <>
+              <Check className="h-4 w-4 mr-2" />
+              Accept
+            </>
+          )}
         </Button>
       </CardFooter>
     </Card>
   )
 }
-
-// Sample data
-const upcomingSessions = [
-  {
-    id: "1",
-    title: "Career Strategy Session",
-    date: "March 25, 2025",
-    time: "10:00 AM",
-    format: "Video Call (Google Meet)",
-    mentee: {
-      name: "John Davis",
-      age: 28,
-      avatar: "/placeholder.svg?height=40&width=40",
-    },
-    topics: "Career transition, leadership development, finding purpose in work",
-  },
-  {
-    id: "2",
-    title: "Faith & Life Balance",
-    date: "April 2, 2025",
-    time: "2:00 PM",
-    format: "In-person (Coffee Shop)",
-    mentee: {
-      name: "Michael Brown",
-      age: 32,
-      avatar: "/placeholder.svg?height=40&width=40",
-    },
-    topics: "Integrating faith into daily life, community involvement, spiritual disciplines",
-  },
-]
-
-const pastSessions = [
-  {
-    id: "3",
-    title: "Business Leadership",
-    date: "March 10, 2025",
-    time: "3:00 PM",
-    format: "Video Call (Google Meet)",
-    mentee: {
-      name: "Ryan Johnson",
-      age: 30,
-      avatar: "/placeholder.svg?height=40&width=40",
-    },
-    topics: "Team management, decision making, strategic planning",
-  },
-]
-
-const sessionRequests = [
-  {
-    id: "4",
-    title: "Faith & Career Integration",
-    date: "April 10, 2025",
-    time: "1:00 PM",
-    format: "Video Call (Google Meet)",
-    mentee: {
-      name: "Thomas Clark",
-      age: 27,
-      avatar: "/placeholder.svg?height=40&width=40",
-    },
-    topics: "Finding purpose in work, ethical decision making, work-life balance",
-    message:
-      "I've been struggling with aligning my career goals with my faith values. I would appreciate your guidance on how to integrate these important aspects of my life.",
-  },
-  {
-    id: "5",
-    title: "Entrepreneurship Guidance",
-    date: "April 15, 2025",
-    time: "11:00 AM",
-    format: "In-person (Office)",
-    mentee: {
-      name: "Alex Wilson",
-      age: 31,
-      avatar: "/placeholder.svg?height=40&width=40",
-    },
-    topics: "Business idea validation, startup funding, work-life balance as an entrepreneur",
-    message:
-      "I'm considering starting my own business and would value your perspective as someone who has successfully navigated this path.",
-  },
-]
 

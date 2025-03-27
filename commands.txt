@@ -1,0 +1,7 @@
+npx prisma studio
+ngrok tcp 5432
+testing postgres of ngrok
+psql postgresql://timothy:your_password@0.tcp.ngrok.io:12345/counselOfElders
+npx prisma db push
+npx prisma generate to sync up the db
+

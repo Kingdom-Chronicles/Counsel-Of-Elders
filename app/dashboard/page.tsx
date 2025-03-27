@@ -201,6 +201,7 @@ export default function DashboardPage() {
   )
 }
 
+// Update the SessionCard component in the dashboard page
 function SessionCard({ session, type }) {
   return (
     <Card>
@@ -213,7 +214,13 @@ function SessionCard({ session, type }) {
             </CardDescription>
           </div>
           {type === "upcoming" && (
-            <div className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">Confirmed</div>
+            <div
+              className={`px-2 py-1 text-xs font-medium rounded-full ${
+                session.status === "CONFIRMED" ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"
+              }`}
+            >
+              {session.status === "CONFIRMED" ? "Confirmed" : "Pending"}
+            </div>
           )}
           {type === "pending" && (
             <div className="px-2 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800">Pending</div>
@@ -248,6 +255,20 @@ function SessionCard({ session, type }) {
             <p className="text-sm text-gray-500">{session.topics}</p>
           </div>
         )}
+
+        {session.meetingLink && session.status === "CONFIRMED" && (
+          <div className="mt-4 p-3 bg-green-50 rounded-md">
+            <p className="text-sm font-medium mb-1">Google Meet Link:</p>
+            <a
+              href={session.meetingLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-blue-600 hover:underline break-all"
+            >
+              {session.meetingLink}
+            </a>
+          </div>
+        )}
       </CardContent>
       <CardFooter className="flex flex-col sm:flex-row gap-2">
         {type === "upcoming" && (
@@ -255,7 +276,17 @@ function SessionCard({ session, type }) {
             <Button variant="outline" className="w-full sm:w-auto">
               Reschedule
             </Button>
-            <Button className="w-full sm:w-auto">Join Session</Button>
+            {session.status === "CONFIRMED" && session.meetingLink ? (
+              <Button className="w-full sm:w-auto" asChild>
+                <a href={session.meetingLink} target="_blank" rel="noopener noreferrer">
+                  Join Session
+                </a>
+              </Button>
+            ) : (
+              <Button className="w-full sm:w-auto" disabled>
+                Awaiting Confirmation
+              </Button>
+            )}
           </>
         )}
         {type === "past" && (
@@ -295,6 +326,8 @@ const upcomingSessions = [
       avatar: "/placeholder.svg?height=40&width=40",
     },
     topics: "Career transition, leadership development, finding purpose in work",
+    status: "CONFIRMED",
+    meetingLink: "https://meet.google.com/xyz-abc-def",
   },
   {
     id: "2",
@@ -308,6 +341,7 @@ const upcomingSessions = [
       avatar: "/placeholder.svg?height=40&width=40",
     },
     topics: "Integrating faith into daily life, community involvement, spiritual disciplines",
+    status: "PENDING",
   },
 ]
 

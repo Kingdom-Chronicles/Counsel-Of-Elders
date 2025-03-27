@@ -2,33 +2,157 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { ChevronLeft, Clock } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { ChevronLeft, Clock, Loader2 } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
+import { useToast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
+import { createMeetingWithGoogleMeet } from "@/app/actions/meetings"
 
 export default function SchedulePage({ params }) {
-  // In a real app, you would fetch the mentor data based on the ID
-  const mentor = mentors.find((m) => m.id === params.id) || mentors[0]
-
+  const router = useRouter()
+  const { toast } = useToast()
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [mentor, setMentor] = useState(null)
   const [date, setDate] = useState(new Date())
   const [selectedTimeSlot, setSelectedTimeSlot] = useState(null)
+  const [topics, setTopics] = useState("")
+  const [timeSlots, setTimeSlots] = useState([])
 
-  // Generate time slots for the selected date
-  // In a real app, these would come from the mentor's availability
-  const timeSlots = [
-    { time: "9:00 AM", available: true },
-    { time: "10:00 AM", available: true },
-    { time: "11:00 AM", available: false },
-    { time: "1:00 PM", available: true },
-    { time: "2:00 PM", available: true },
-    { time: "3:00 PM", available: false },
-    { time: "4:00 PM", available: true },
-  ]
+  // Fetch mentor data and availability
+  useState(() => {
+    const fetchMentor = async () => {
+      try {
+        const response = await fetch(`/api/mentors/${params.id}`)
+        if (!response.ok) {
+          throw new Error("Failed to fetch mentor")
+        }
+        const data = await response.json()
+        setMentor(data)
+
+        // Generate time slots based on mentor's availability
+        if (date) {
+          const dayOfWeek = date.getDay() // 0 = Sunday, 1 = Monday, etc.
+          const availableSlots = data.availability.filter((slot) => slot.dayOfWeek === dayOfWeek)
+
+          const slots = []
+          availableSlots.forEach((slot) => {
+            const [startHour, startMinute] = slot.startTime.split(":").map(Number)
+            const [endHour, endMinute] = slot.endTime.split(":").map(Number)
+
+            // Generate slots in 1-hour increments
+            let currentHour = startHour
+            const currentMinute = startMinute
+
+            while (currentHour < endHour || (currentHour === endHour && currentMinute < endMinute)) {
+              const timeString = `${currentHour.toString().padStart(2, "0")}:${currentMinute.toString().padStart(2, "0")}`
+              slots.push({
+                time: formatTime(timeString),
+                available: true,
+              })
+
+              // Increment by 1 hour
+              currentHour += 1
+            }
+          })
+
+          setTimeSlots(slots.length > 0 ? slots : generateDefaultTimeSlots())
+        }
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to load mentor information. Please try again.",
+          variant: "destructive",
+        })
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchMentor()
+  }, [params.id, date, toast])
+
+  // Helper function to format time (24h to 12h)
+  const formatTime = (time24h) => {
+    const [hour, minute] = time24h.split(":").map(Number)
+    const period = hour >= 12 ? "PM" : "AM"
+    const hour12 = hour % 12 || 12
+    return `${hour12}:${minute.toString().padStart(2, "0")} ${period}`
+  }
+
+  // Generate default time slots if no availability data
+  const generateDefaultTimeSlots = () => {
+    return [
+      { time: "9:00 AM", available: true },
+      { time: "10:00 AM", available: true },
+      { time: "11:00 AM", available: false },
+      { time: "1:00 PM", available: true },
+      { time: "2:00 PM", available: true },
+      { time: "3:00 PM", available: false },
+      { time: "4:00 PM", available: true },
+    ]
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setIsSubmitting(true)
+
+    if (!date || !selectedTimeSlot) {
+      toast({
+        title: "Missing information",
+        description: "Please select a date and time for your session",
+        variant: "destructive",
+      })
+      setIsSubmitting(false)
+      return
+    }
+
+    try {
+      const formData = new FormData()
+      formData.append("title", `Session with ${mentor.name}`)
+      formData.append("mentorId", params.id)
+      formData.append("date", date.toISOString().split("T")[0])
+      formData.append("time", selectedTimeSlot)
+      formData.append("duration", "60")
+      formData.append("topics", topics)
+
+      const result = await createMeetingWithGoogleMeet(formData)
+
+      if (result.error) {
+        throw new Error(result.error)
+      }
+
+      toast({
+        title: "Session requested",
+        description: "Your session has been requested. You'll be notified when the mentor confirms.",
+      })
+
+      // Redirect to dashboard
+      router.push("/dashboard")
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to schedule session. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  if (isLoading || !mentor) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -77,62 +201,78 @@ export default function SchedulePage({ params }) {
                   <CardTitle>Select Date & Time</CardTitle>
                   <CardDescription>Choose when you'd like to meet with {mentor.name}</CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <div className="grid md:grid-cols-2 gap-6">
-                    <div>
-                      <h3 className="font-medium mb-2">Date</h3>
-                      <div className="border rounded-md p-2">
-                        <Calendar
-                          mode="single"
-                          selected={date}
-                          onSelect={setDate}
-                          className="mx-auto"
-                          disabled={(date) => {
-                            // Disable weekends and past dates
-                            return (
-                              date < new Date(new Date().setHours(0, 0, 0, 0)) ||
-                              date.getDay() === 0 ||
-                              date.getDay() === 6
-                            )
-                          }}
-                        />
+                <form onSubmit={handleSubmit}>
+                  <CardContent>
+                    <div className="grid md:grid-cols-2 gap-6">
+                      <div>
+                        <h3 className="font-medium mb-2">Date</h3>
+                        <div className="border rounded-md p-2">
+                          <Calendar
+                            mode="single"
+                            selected={date}
+                            onSelect={setDate}
+                            className="mx-auto"
+                            disabled={(date) => {
+                              // Disable weekends and past dates
+                              return (
+                                date < new Date(new Date().setHours(0, 0, 0, 0)) ||
+                                date.getDay() === 0 ||
+                                date.getDay() === 6
+                              )
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <h3 className="font-medium mb-2">Available Time Slots</h3>
+                        {date ? (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {timeSlots.map((slot, index) => (
+                              <Button
+                                key={index}
+                                variant={selectedTimeSlot === slot.time ? "default" : "outline"}
+                                className={cn("justify-start", !slot.available && "opacity-50 cursor-not-allowed")}
+                                disabled={!slot.available}
+                                onClick={() => setSelectedTimeSlot(slot.time)}
+                                type="button"
+                              >
+                                <Clock className="mr-2 h-4 w-4" />
+                                {slot.time}
+                              </Button>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-500">Please select a date first</p>
+                        )}
                       </div>
                     </div>
-                    <div>
-                      <h3 className="font-medium mb-2">Available Time Slots</h3>
-                      {date ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {timeSlots.map((slot, index) => (
-                            <Button
-                              key={index}
-                              variant={selectedTimeSlot === slot.time ? "default" : "outline"}
-                              className={cn("justify-start", !slot.available && "opacity-50 cursor-not-allowed")}
-                              disabled={!slot.available}
-                              onClick={() => setSelectedTimeSlot(slot.time)}
-                            >
-                              <Clock className="mr-2 h-4 w-4" />
-                              {slot.time}
-                            </Button>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-gray-500">Please select a date first</p>
-                      )}
-                    </div>
-                  </div>
 
-                  <div className="mt-6">
-                    <h3 className="font-medium mb-2">Session Details</h3>
-                    <Textarea
-                      placeholder="What would you like to discuss in this session? Any specific topics or questions?"
-                      className="min-h-[100px]"
-                    />
-                  </div>
-                </CardContent>
-                <CardFooter className="flex flex-col sm:flex-row justify-between gap-2">
-                  <Button variant="outline">Cancel</Button>
-                  <Button disabled={!selectedTimeSlot}>Request Session</Button>
-                </CardFooter>
+                    <div className="mt-6">
+                      <h3 className="font-medium mb-2">Session Details</h3>
+                      <Textarea
+                        placeholder="What would you like to discuss in this session? Any specific topics or questions?"
+                        className="min-h-[100px]"
+                        value={topics}
+                        onChange={(e) => setTopics(e.target.value)}
+                      />
+                    </div>
+                  </CardContent>
+                  <CardFooter className="flex flex-col sm:flex-row justify-between gap-2">
+                    <Button variant="outline" type="button" onClick={() => router.back()}>
+                      Cancel
+                    </Button>
+                    <Button disabled={!selectedTimeSlot || isSubmitting} type="submit">
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Requesting...
+                        </>
+                      ) : (
+                        "Request Session"
+                      )}
+                    </Button>
+                  </CardFooter>
+                </form>
               </Card>
             </div>
 
@@ -175,14 +315,14 @@ export default function SchedulePage({ params }) {
 
                   <div className="border-t pt-4">
                     <p className="text-sm font-medium">Session Type</p>
-                    <p className="text-sm text-gray-500">60-minute video call</p>
+                    <p className="text-sm text-gray-500">60-minute video call via Google Meet</p>
                   </div>
 
                   <div className="border-t pt-4">
                     <p className="text-sm font-medium">What to Expect</p>
                     <p className="text-sm text-gray-500">
                       After requesting this session, {mentor.name} will review and confirm. Once confirmed, you'll
-                      receive a calendar invite with connection details.
+                      receive a Google Meet link for your session.
                     </p>
                   </div>
                 </CardContent>
@@ -207,19 +347,4 @@ export default function SchedulePage({ params }) {
     </div>
   )
 }
-
-// Sample data
-const mentors = [
-  {
-    id: "1",
-    name: "David Wilson",
-    title: "Business Strategist & Faith Leader",
-    bio: "With 30 years of experience in business leadership and ministry, I help young men navigate career decisions while maintaining spiritual balance.",
-    avatar: "/placeholder.svg?height=64&width=64",
-    coverImage: "/placeholder.svg?height=200&width=400",
-    categories: ["Business", "Faith"],
-    experience: 30,
-    sessions: 124,
-  },
-]
 

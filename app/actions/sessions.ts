@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { db } from "@/lib/db"
-import { auth } from "@/auth"
+import { getSession } from "next-auth/react"
 
 const sessionSchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -17,7 +17,7 @@ const sessionSchema = z.object({
 })
 
 export async function scheduleSession(formData: FormData) {
-  const session = await auth()
+  const session = await getSession()
 
   if (!session || !session.user) {
     return {
@@ -64,7 +64,7 @@ export async function scheduleSession(formData: FormData) {
 }
 
 export async function updateSessionStatus(sessionId: string, status: "CONFIRMED" | "CANCELLED" | "COMPLETED") {
-  const session = await auth()
+  const session = await getSession()
 
   if (!session || !session.user) {
     return {

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { db } from "@/lib/db"
-import { auth } from "@/auth"
+import { getSession } from "next-auth/react"
 
 const profileSchema = z.object({
   title: z.string().optional(),
@@ -16,7 +16,7 @@ const profileSchema = z.object({
 })
 
 export async function updateProfile(formData: FormData) {
-  const session = await auth()
+  const session = await getSession()
 
   if (!session || !session.user) {
     return {
@@ -122,7 +122,7 @@ export async function updateProfile(formData: FormData) {
 }
 
 export async function addExperience(formData: FormData) {
-  const session = await auth()
+  const session = await getSession()
 
   if (!session || !session.user) {
     return {
@@ -171,7 +171,7 @@ export async function addExperience(formData: FormData) {
 }
 
 export async function updateAvailability(availabilityData: any) {
-  const session = await auth()
+  const session = await getSession()
 
   if (!session || !session.user) {
     return {
