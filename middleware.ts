@@ -28,7 +28,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Check if user needs onboarding
-  const needsOnboarding = await checkIfNeedsOnboarding(token.id as string, token.role as string)
+  const needsOnboarding = await checkIfNeedsOnboarding(token)
 
   if (needsOnboarding) {
     // Don't redirect if already on onboarding page
@@ -66,18 +66,25 @@ export async function middleware(request: NextRequest) {
 }
 
 // Helper function to check if user needs onboarding
-async function checkIfNeedsOnboarding(userId: string, role: string): Promise<boolean> {
+async function checkIfNeedsOnboarding(token: any): Promise<boolean> {
+  if (!token) return true
+  console.log("Token in onboarding check:", token)
+  
   try {
-    const response = await fetch(`${process.env.NEXTAUTH_URL}/api/me/profile`)
+    const response = await fetch(`${process.env.NEXTAUTH_URL}/api/me/profile/${token.id}`)
+
     if (!response.ok) {
       return true
     }
 
     const data = await response.json()
 
-    // Check if essential profile fields are filled
-    if (role === "MENTOR") {
-      return !data.title || !data.bio || !data.categories || data.categories.length === 0
+    console.log("data",data)
+
+    // For mentors, check required fields
+    if (token.role === "MENTOR") {
+      console.log("check if needs onboarding",!data.title || !data.bio || !data.categories?.length )
+      return !data.title || !data.bio || !data.categories?.length 
     }
 
     // For mentees, we might have different requirements
@@ -102,4 +109,3 @@ export const config = {
     "/((?!_next/static|_next/image|favicon.ico|public|api).*)",
   ],
 }
-

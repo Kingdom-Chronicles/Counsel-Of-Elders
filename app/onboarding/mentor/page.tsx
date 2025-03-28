@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState,  } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, ArrowRight, Check, Loader2 } from "lucide-react"
@@ -31,15 +31,15 @@ export default function MentorOnboarding() {
   const [redirectTriggered, setRedirectTriggered] = useState(false)
 
   // Effect to handle redirection after successful profile update
-  useEffect(() => {
-    if (redirectTriggered) {
-      const redirectTimer = setTimeout(() => {
-        router.push("/mentor-portal")
-      }, 1500)
+  // useEffect(() => {
+  //   if (redirectTriggered) {
+  //     const redirectTimer = setTimeout(() => {
+  //       router.push("/mentor-portal")
+  //     }, 1500)
 
-      return () => clearTimeout(redirectTimer)
-    }
-  }, [redirectTriggered, router])
+  //     return () => clearTimeout(redirectTimer)
+  //   }
+  // }, [redirectTriggered, router])
 
   const handleNext = () => {
     if (step === 1 && !profile.title) {
@@ -81,6 +81,7 @@ export default function MentorOnboarding() {
   }
 
   const handleComplete = async () => {
+    
     setIsSaving(true)
 
     try {
@@ -100,14 +101,22 @@ export default function MentorOnboarding() {
 
       console.log("Submitting profile data...")
       const response = await updateProfile(formData)
+      console.log("response", response)
       console.log("Profile update result:", response)
 
       if (response.success) {
-        toast({
-          title: "Profile setup complete",
-          description: "Your mentor profile has been created successfully",
-        })
-        setRedirectTriggered(true)
+        // toast({
+        //   title: "Profile setup complete",
+        //   description: "Your mentor profile has been created successfully",
+        // })
+        // Redirect to the mentor portal
+        console.log("about to route too")
+        setIsSaving(false)
+        // router.push("/mentor-portal") // Redirect to the mentor portal page
+        window.location.href = '/mentor-portal'
+        
+        console.log("did i pass ")
+      
       } else {
         console.error(response.error)
         toast({

@@ -21,7 +21,6 @@ const profileSchema = z.object({
 export async function updateProfile(formData: FormData) {
   const session = await getServerSession(authOptions)
 
-  console.log("Session details:", session)
 
   if (!session || !session.user) {
     return {
@@ -91,6 +90,7 @@ export async function updateProfile(formData: FormData) {
         },
       })
 
+
       // Then, add new categories
       for (const categoryName of categories) {
         // Find or create category
@@ -124,10 +124,6 @@ export async function updateProfile(formData: FormData) {
       }
     }
 
-    console.log("before i revalidate path")
-    revalidatePath("/profile")
-    console.log("after  i revalidate path profile")
-    revalidatePath("/mentor-portal/profile")
     return { success: true }
   } catch (error) {
     console.error("Error updating profile:", error)
