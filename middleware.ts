@@ -87,6 +87,12 @@ async function checkIfNeedsOnboarding(token: any): Promise<boolean> {
       return !data.title || !data.bio || !data.categories?.length 
     }
 
+    // For mentees, check if they have a bio and at least one interest (stored in expertise)
+    if (token.role === "MENTEE") {
+      console.log("check if mentee needs onboarding", !data.bio || !data.expertise?.length)
+      return !data.bio || !data.expertise?.length
+    }
+
     // For mentees, we might have different requirements
     return false
   } catch (error) {
