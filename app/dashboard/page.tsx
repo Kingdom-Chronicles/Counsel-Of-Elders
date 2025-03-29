@@ -1,3 +1,6 @@
+"use client"
+
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Calendar, Clock, MessageSquare, User } from "lucide-react"
 
@@ -7,6 +10,39 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export default function DashboardPage() {
+  const [isLoading, setIsLoading] = useState(true)
+  const [recommendedMentors, setRecommendedMentors] = useState([])
+
+  useEffect(() => {
+    const fetchMentors = async () => {
+      try {
+        const response = await fetch("/api/mentors?limit=3")
+        if (!response.ok) {
+          throw new Error("Failed to fetch mentors")
+        }
+
+        const mentorsFromDb = await response.json()
+
+        // Combine database mentors with sample mentors
+        const combinedMentors = [
+          ...mentorsFromDb,
+          // Add sample mentors only if we need to fill up to 3 mentors
+          ...(mentorsFromDb.length < 3 ? sampleRecommendedMentors.slice(0, 3 - mentorsFromDb.length) : []),
+        ]
+
+        setRecommendedMentors(combinedMentors)
+      } catch (error) {
+        console.error("Error fetching mentors:", error)
+        // Fallback to sample data if fetch fails
+        setRecommendedMentors(sampleRecommendedMentors)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchMentors()
+  }, [])
+
   return (
     <div className="flex flex-col min-h-screen">
       <header className="px-4 lg:px-6 h-16 flex items-center border-b">
@@ -152,28 +188,34 @@ export default function DashboardPage() {
                 <CardDescription>Based on your interests</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  {recommendedMentors.map((mentor) => (
-                    <div key={mentor.id} className="flex items-center gap-4">
-                      <Avatar>
-                        <AvatarImage src={mentor.avatar} alt={mentor.name} />
-                        <AvatarFallback>
-                          {mentor.name
-                            .split(" ")
-                            .map((n) => n[0])
-                            .join("")}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">{mentor.name}</p>
-                        <p className="text-sm text-gray-500 truncate">{mentor.title}</p>
+                {isLoading ? (
+                  <div className="flex justify-center py-4">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {recommendedMentors.map((mentor) => (
+                      <div key={mentor.id} className="flex items-center gap-4">
+                        <Avatar>
+                          <AvatarImage src={mentor.avatar} alt={mentor.name} />
+                          <AvatarFallback>
+                            {mentor.name
+                              .split(" ")
+                              .map((n) => n[0])
+                              .join("")}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">{mentor.name}</p>
+                          <p className="text-sm text-gray-500 truncate">{mentor.title}</p>
+                        </div>
+                        <Button variant="outline" size="sm" asChild>
+                          <Link href={`/mentors/${mentor.id}`}>View</Link>
+                        </Button>
                       </div>
-                      <Button variant="outline" size="sm" asChild>
-                        <Link href={`/mentors/${mentor.id}`}>View</Link>
-                      </Button>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
               <CardFooter>
                 <Button variant="ghost" className="w-full" asChild>
@@ -377,7 +419,8 @@ const pendingRequests = [
   },
 ]
 
-const recommendedMentors = [
+// Sample data for fallback
+const sampleRecommendedMentors = [
   {
     id: "5",
     name: "William Parker",

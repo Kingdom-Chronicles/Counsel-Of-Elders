@@ -6,6 +6,7 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const category = searchParams.get("category")
   const search = searchParams.get("search")
+  const limit = Number.parseInt(searchParams.get("limit") || "10", 10)
 
   const whereClause: any = {
     user: {
@@ -63,6 +64,13 @@ export async function GET(request: NextRequest) {
         },
       },
     },
+    take: limit,
+    orderBy: {
+      // Order by most reviewed mentors first
+      reviews: {
+        _count: "desc",
+      },
+    },
   })
 
   // Transform data for the frontend
@@ -77,7 +85,7 @@ export async function GET(request: NextRequest) {
       name: mentor.user.name,
       title: mentor.title,
       bio: mentor.bio,
-      avatar: mentor.user.image,
+      avatar: mentor.user.image || "/placeholder.svg?height=40&width=40",
       coverImage: mentor.coverImage,
       categories: mentor.categories.map((c) => c.name),
       expertise: mentor.expertise || [],

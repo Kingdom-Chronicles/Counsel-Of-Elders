@@ -1,16 +1,97 @@
 import Link from "next/link"
+import { notFound } from "next/navigation"
 import { Calendar, Clock, MapPin, MessageSquare, Star, User } from "lucide-react"
 
+import { db } from "@/lib/db"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
-export default function MentorProfilePage({ params }) {
-  // In a real app, you would fetch the mentor data based on the ID
-  const mentor = mentors.find((m) => m.id === params.id) || mentors[0]
+// Fetch mentor data from the database
+async function getMentor(id) {
+  try {
+    const user = await db.user.findUnique({
+      where: {
+        id: id,
+        role: "MENTOR",
+      },
+      include: {
+        profile: {
+          include: {
+            categories: true,
+            experiences: true,
+            reviews: true,
+            availability: true,
+          },
+        },
+      },
+    })
 
+    if (!user || !user.profile) {
+      return null
+    }
+
+    // Transform data for the frontend
+    return {
+      id: user.id,
+      name: user.name,
+      title: user.profile.title,
+      bio: user.profile.bio,
+      avatar: user.image || "/placeholder.svg?height=64&width=64",
+      coverImage: user.profile.coverImage || "/placeholder.svg?height=200&width=400",
+      categories: user.profile.categories.map((c) => c.name),
+      expertise: user.profile.expertise || [],
+      experience: user.profile.experience || 0,
+      sessions: user.profile.reviews.length,
+      experiences: user.profile.experiences.map((exp) => ({
+        role: exp.role,
+        company: exp.company,
+        period: exp.period,
+        description: exp.description,
+      })),
+      reviews: user.profile.reviews.map((review) => ({
+        name: review.authorName,
+        rating: review.rating,
+        date: review.date.toLocaleDateString(),
+        comment: review.comment,
+      })),
+      availability: user.profile.availability.map((avail) => ({
+        dayOfWeek: avail.dayOfWeek,
+        startTime: avail.startTime,
+        endTime: avail.endTime,
+      })),
+    }
+  } catch (error) {
+    console.error("Error fetching mentor:", error)
+    return null
+  }
+}
+
+export default async function MentorProfilePage({ params }) {
+  // Fetch mentor data from the database
+  const mentorFromDb = await getMentor(params.id)
+
+  // If mentor not found in database, try to find in sample data
+  if (!mentorFromDb) {
+    const mentorFromSample = sampleMentors.find((m) => m.id === params.id)
+
+    // If not found in sample data either, return 404
+    if (!mentorFromSample) {
+      notFound()
+    }
+
+    // Use sample data
+    return <MentorProfile mentor={mentorFromSample} />
+  }
+
+  // Use database data
+  return <MentorProfile mentor={mentorFromDb} />
+}
+
+// Separate component for the mentor profile UI
+function MentorProfile({ mentor }) {
   return (
     <div className="flex flex-col min-h-screen">
       <header className="px-4 lg:px-6 h-16 flex items-center border-b">
@@ -50,7 +131,7 @@ export default function MentorProfilePage({ params }) {
               <img
                 alt={`${mentor.name}'s cover photo`}
                 className="object-cover w-full h-full"
-                src={mentor.coverImage || "/placeholder.svg"}
+                src={mentor.coverImage || "/placeholder.svg?height=200&width=400"}
               />
             </div>
             <div className="absolute -bottom-16 left-4 md:left-8">
@@ -74,13 +155,17 @@ export default function MentorProfilePage({ params }) {
                   <p className="text-gray-500 dark:text-gray-400">{mentor.title}</p>
                 </div>
                 <div className="flex gap-2 mt-4 md:mt-0">
-                  <Button variant="outline" size="sm" className="gap-1">
-                    <MessageSquare className="h-4 w-4" />
-                    Message
+                  <Button variant="outline" size="sm" className="gap-1" asChild>
+                    <Link href={`/messages?mentor=${mentor.id}`}>
+                      <MessageSquare className="h-4 w-4" />
+                      Message
+                    </Link>
                   </Button>
-                  <Button size="sm" className="gap-1">
-                    <Calendar className="h-4 w-4" />
-                    Schedule
+                  <Button size="sm" className="gap-1" asChild>
+                    <Link href={`/mentors/${mentor.id}/schedule`}>
+                      <Calendar className="h-4 w-4" />
+                      Schedule
+                    </Link>
                   </Button>
                 </div>
               </div>
@@ -95,20 +180,23 @@ export default function MentorProfilePage({ params }) {
                   <div className="space-y-4">
                     <h2 className="text-xl font-semibold">Biography</h2>
                     <p>{mentor.bio}</p>
-                    <p>
-                      I believe in a holistic approach to mentorship, addressing not just the immediate challenges but
-                      also the underlying principles that lead to long-term success and fulfillment. My goal is to help
-                      you develop both practical skills and wisdom that will serve you throughout your life journey.
-                    </p>
+                    {!mentor.bio?.includes("holistic approach") && (
+                      <p>
+                        I believe in a holistic approach to mentorship, addressing not just the immediate challenges but
+                        also the underlying principles that lead to long-term success and fulfillment. My goal is to
+                        help you develop both practical skills and wisdom that will serve you throughout your life
+                        journey.
+                      </p>
+                    )}
 
                     <h2 className="text-xl font-semibold pt-4">Areas of Expertise</h2>
                     <div className="flex flex-wrap gap-2">
-                      {mentor.categories.map((category) => (
+                      {mentor.categories?.map((category) => (
                         <Badge key={category} variant="secondary">
                           {category}
                         </Badge>
                       ))}
-                      {mentor.expertise.map((item) => (
+                      {mentor.expertise?.map((item) => (
                         <Badge key={item} variant="outline">
                           {item}
                         </Badge>
@@ -118,48 +206,56 @@ export default function MentorProfilePage({ params }) {
                 </TabsContent>
                 <TabsContent value="experience" className="mt-6">
                   <div className="space-y-6">
-                    {mentor.experiences.map((exp, index) => (
-                      <div key={index} className="border-b pb-4 last:border-0">
-                        <h3 className="font-semibold">{exp.role}</h3>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                          {exp.company} • {exp.period}
-                        </p>
-                        <p className="mt-2">{exp.description}</p>
-                      </div>
-                    ))}
+                    {mentor.experiences && mentor.experiences.length > 0 ? (
+                      mentor.experiences.map((exp, index) => (
+                        <div key={index} className="border-b pb-4 last:border-0">
+                          <h3 className="font-semibold">{exp.role}</h3>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">
+                            {exp.company} • {exp.period}
+                          </p>
+                          <p className="mt-2">{exp.description}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-gray-500">No experience information available.</p>
+                    )}
                   </div>
                 </TabsContent>
                 <TabsContent value="reviews" className="mt-6">
                   <div className="space-y-6">
-                    {mentor.reviews.map((review, index) => (
-                      <div key={index} className="border-b pb-4 last:border-0">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Avatar className="h-8 w-8">
-                            <AvatarFallback>
-                              {review.name
-                                .split(" ")
-                                .map((n) => n[0])
-                                .join("")}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <p className="font-medium">{review.name}</p>
-                            <div className="flex items-center">
-                              {[...Array(5)].map((_, i) => (
-                                <Star
-                                  key={i}
-                                  className={`h-3 w-3 ${
-                                    i < review.rating ? "text-yellow-500 fill-yellow-500" : "text-gray-300"
-                                  }`}
-                                />
-                              ))}
-                              <span className="text-xs text-gray-500 ml-2">{review.date}</span>
+                    {mentor.reviews && mentor.reviews.length > 0 ? (
+                      mentor.reviews.map((review, index) => (
+                        <div key={index} className="border-b pb-4 last:border-0">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Avatar className="h-8 w-8">
+                              <AvatarFallback>
+                                {review.name
+                                  .split(" ")
+                                  .map((n) => n[0])
+                                  .join("")}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <p className="font-medium">{review.name}</p>
+                              <div className="flex items-center">
+                                {[...Array(5)].map((_, i) => (
+                                  <Star
+                                    key={i}
+                                    className={`h-3 w-3 ${
+                                      i < review.rating ? "text-yellow-500 fill-yellow-500" : "text-gray-300"
+                                    }`}
+                                  />
+                                ))}
+                                <span className="text-xs text-gray-500 ml-2">{review.date}</span>
+                              </div>
                             </div>
                           </div>
+                          <p className="text-sm">{review.comment}</p>
                         </div>
-                        <p className="text-sm">{review.comment}</p>
-                      </div>
-                    ))}
+                      ))
+                    ) : (
+                      <p className="text-gray-500">No reviews available yet.</p>
+                    )}
                   </div>
                 </TabsContent>
               </Tabs>
@@ -192,16 +288,39 @@ export default function MentorProfilePage({ params }) {
                   <div className="pt-4">
                     <h3 className="font-medium mb-2">Availability</h3>
                     <div className="grid grid-cols-3 gap-2 text-center text-sm">
-                      <div className="border rounded-md py-1 bg-gray-50 dark:bg-gray-800">Mon</div>
-                      <div className="border rounded-md py-1">Tue</div>
-                      <div className="border rounded-md py-1 bg-gray-50 dark:bg-gray-800">Wed</div>
-                      <div className="border rounded-md py-1">Thu</div>
-                      <div className="border rounded-md py-1 bg-gray-50 dark:bg-gray-800">Fri</div>
-                      <div className="border rounded-md py-1 text-gray-400">Sat</div>
+                      {mentor.availability && mentor.availability.length > 0 ? (
+                        <>
+                          {[0, 1, 2, 3, 4, 5, 6].map((day) => {
+                            const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+                            const isAvailable = mentor.availability.some((a) => a.dayOfWeek === day)
+                            return (
+                              <div
+                                key={day}
+                                className={`border rounded-md py-1 ${
+                                  isAvailable ? "bg-gray-50 dark:bg-gray-800" : "text-gray-400"
+                                }`}
+                              >
+                                {dayNames[day]}
+                              </div>
+                            )
+                          })}
+                        </>
+                      ) : (
+                        <>
+                          <div className="border rounded-md py-1 bg-gray-50 dark:bg-gray-800">Mon</div>
+                          <div className="border rounded-md py-1">Tue</div>
+                          <div className="border rounded-md py-1 bg-gray-50 dark:bg-gray-800">Wed</div>
+                          <div className="border rounded-md py-1">Thu</div>
+                          <div className="border rounded-md py-1 bg-gray-50 dark:bg-gray-800">Fri</div>
+                          <div className="border rounded-md py-1 text-gray-400">Sat</div>
+                        </>
+                      )}
                     </div>
                   </div>
 
-                  <Button className="w-full mt-4">Schedule a Session</Button>
+                  <Button className="w-full mt-4" asChild>
+                    <Link href={`/mentors/${mentor.id}/schedule`}>Schedule a Session</Link>
+                  </Button>
                 </CardContent>
               </Card>
             </div>
@@ -225,8 +344,8 @@ export default function MentorProfilePage({ params }) {
   )
 }
 
-// Sample data
-const mentors = [
+// Sample data for fallback
+const sampleMentors = [
   {
     id: "1",
     name: "David Wilson",

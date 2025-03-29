@@ -2,6 +2,7 @@ import Link from "next/link"
 import { ArrowRight, Calendar, MessageCircle, Users } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import Image from 'next/image'
 
 export default function Home() {
   return (
@@ -60,13 +61,16 @@ export default function Home() {
                 </div>
               </div>
               <div className="flex items-center justify-center">
-                <img
-                  alt="Mentorship illustration"
-                  className="rounded-lg object-cover"
-                  height="550"
-                  src="/placeholder.svg?height=550&width=550"
-                  width="550"
-                />
+              <Image
+                alt="Mentorship illustration"
+                className="rounded-lg object-cover"
+                height={550}
+                width={550}
+                src={require('/public/images/dashboard2.png')}
+                
+                 
+                priority
+              />
               </div>
             </div>
           </div>
