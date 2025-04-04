@@ -27,7 +27,6 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        console.log("i am here")
         if (!credentials?.email || !credentials?.password) {
           throw new Error("Invalid credentials")
         }

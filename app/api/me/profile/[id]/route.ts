@@ -20,7 +20,6 @@ export async function GET(
       return NextResponse.json({ error: "User ID is required" }, { status: 400 })
     }
 
-    console.log("Fetching profile for userId:", userId)
 
     const user = await db.user.findUnique({
       where: {
@@ -37,11 +36,8 @@ export async function GET(
     })
 
     if (!user) {
-      console.log("User not found for ID:", userId)
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
-
-    console.log("Found user:", user)
 
     // Transform data for the frontend
     const profileData = {
@@ -63,7 +59,6 @@ export async function GET(
         })) || [],
     }
 
-    console.log("Returning profile data:", profileData)
     return NextResponse.json(profileData)
   } catch (error) {
     console.error("Error fetching profile:", error)

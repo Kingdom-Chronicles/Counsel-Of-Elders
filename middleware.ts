@@ -3,20 +3,30 @@ import type { NextRequest } from "next/server"
 import { getToken } from "next-auth/jwt"
 
 export async function middleware(request: NextRequest) {
+  console.log("Middleware running for path:", request.nextUrl.pathname)
+
   const token = await getToken({ req: request })
+  console.log("Token in middleware:", token ? { id: token.id, role: token.role } : "No token")
+
   const isAuthenticated = !!token
   const isMentor = token?.role === "MENTOR"
   const isMentee = token?.role === "MENTEE"
 
+  console.log("Auth status:", { isAuthenticated, isMentor, isMentee })
+
   // Public paths that don't require authentication
   const publicPaths = ["/", "/login", "/signup", "/about", "/how-it-works", "/contact"]
+
+  // Auth callback paths should also be public
+  const authCallbackPaths = ["/api/auth/callback", "/api/auth/session", "/api/auth/csrf"]
 
   // Onboarding paths
   const onboardingPaths = ["/onboarding/mentor", "/onboarding/mentee"]
 
-  // Check if the path is public or onboarding
+  // Check if the path is public, auth callback, or onboarding
   if (
     publicPaths.some((path) => request.nextUrl.pathname === path) ||
+    authCallbackPaths.some((path) => request.nextUrl.pathname.startsWith(path)) ||
     onboardingPaths.some((path) => request.nextUrl.pathname === path)
   ) {
     return NextResponse.next()
@@ -65,11 +75,11 @@ export async function middleware(request: NextRequest) {
   return NextResponse.next()
 }
 
-// Helper function to check if user needs onboarding
+// Update the checkIfNeedsOnboarding function to properly check for mentee onboarding requirements
 async function checkIfNeedsOnboarding(token: any): Promise<boolean> {
   if (!token) return true
   console.log("Token in onboarding check:", token)
-  
+
   try {
     const response = await fetch(`${process.env.NEXTAUTH_URL}/api/me/profile/${token.id}`)
 
@@ -79,12 +89,11 @@ async function checkIfNeedsOnboarding(token: any): Promise<boolean> {
 
     const data = await response.json()
 
-    console.log("data",data)
 
     // For mentors, check required fields
     if (token.role === "MENTOR") {
-      console.log("check if needs onboarding",!data.title || !data.bio || !data.categories?.length )
-      return !data.title || !data.bio || !data.categories?.length 
+      console.log("check if mentor needs onboarding", !data.title || !data.bio || !data.categories?.length)
+      return !data.title || !data.bio || !data.categories?.length
     }
 
     // For mentees, check if they have a bio and at least one interest (stored in expertise)
@@ -93,8 +102,8 @@ async function checkIfNeedsOnboarding(token: any): Promise<boolean> {
       return !data.bio || !data.expertise?.length
     }
 
-    // For mentees, we might have different requirements
-    return false
+    // Default to requiring onboarding for unknown roles
+    return true
   } catch (error) {
     // If there's an error, assume onboarding is needed
     console.error("Error checking if user needs onboarding:", error)
@@ -115,3 +124,4 @@ export const config = {
     "/((?!_next/static|_next/image|favicon.ico|public|api).*)",
   ],
 }
+

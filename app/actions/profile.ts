@@ -60,7 +60,6 @@ export async function updateProfile(formData: FormData) {
       }
     }
 
-    console.log("profile found",profile)
 
     // Update profile
     await db.profile.update({

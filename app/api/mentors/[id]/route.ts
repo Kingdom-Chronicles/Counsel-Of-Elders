@@ -17,7 +17,6 @@ export async function GET(request: NextRequest, { params }: RouteParams): Promis
       return NextResponse.json({ error: "Mentor ID is required" }, { status: 400 })
     }
 
-    console.log("Fetching profile for mentorId:", mentorId)
 
     const user = await db.user.findUnique({
       where: {

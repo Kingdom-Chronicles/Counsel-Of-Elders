@@ -99,10 +99,7 @@ export default function MentorOnboarding() {
         formData.append("categories", category)
       })
 
-      console.log("Submitting profile data...")
       const response = await updateProfile(formData)
-      console.log("response", response)
-      console.log("Profile update result:", response)
 
       if (response.success) {
         // toast({
@@ -115,7 +112,6 @@ export default function MentorOnboarding() {
         // router.push("/mentor-portal") // Redirect to the mentor portal page
         window.location.href = '/mentor-portal'
         
-        console.log("did i pass ")
       
       } else {
         console.error(response.error)
