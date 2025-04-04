@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/components/ui/use-toast"
 import { updateSessionStatus } from "@/app/actions/meetings"
+import { updateAvailability } from "@/app/actions/profile"
 
 export default function MentorPortalPage() {
   const { toast } = useToast()
@@ -26,6 +27,18 @@ export default function MentorPortalPage() {
     hoursOfMentorship: 0,
     averageRating: 0,
   })
+
+  const [availabilityData, setAvailabilityData] = useState([])
+  const [selectedTimeSlots, setSelectedTimeSlots] = useState({
+    0: [], // Sunday
+    1: [], // Monday
+    2: [], // Tuesday
+    3: [], // Wednesday
+    4: [], // Thursday
+    5: [], // Friday
+    6: [], // Saturday
+  })
+  const [isSavingAvailability, setIsSavingAvailability] = useState(false)
 
   useEffect(() => {
     const fetchData = async () => {
@@ -45,6 +58,35 @@ export default function MentorPortalPage() {
         // Fetch stats
         const statsResponse = await fetch("/api/me/stats")
         const statsData = await statsResponse.json()
+
+        // Fetch mentor availability
+        const availabilityResponse = await fetch("/api/me/availability")
+        const availabilityData = await availabilityResponse.json()
+        setAvailabilityData(availabilityData)
+
+        // Initialize selected time slots based on fetched data
+        const initialSelectedSlots = {
+          0: [],
+          1: [],
+          2: [],
+          3: [],
+          4: [],
+          5: [],
+          6: [],
+        }
+
+        availabilityData.forEach((slot) => {
+          // Convert startTime to array of individual hour slots
+          const [startHour] = slot.startTime.split(":").map(Number)
+          const [endHour] = slot.endTime.split(":").map(Number)
+
+          for (let hour = startHour; hour < endHour; hour++) {
+            const timeString = `${hour.toString().padStart(2, "0")}:00`
+            initialSelectedSlots[slot.dayOfWeek].push(timeString)
+          }
+        })
+
+        setSelectedTimeSlots(initialSelectedSlots)
 
         setSessions({
           upcoming: upcomingSessions,
@@ -119,6 +161,94 @@ export default function MentorPortalPage() {
         description: error.message || "Failed to decline session. Please try again.",
         variant: "destructive",
       })
+    }
+  }
+
+  const toggleTimeSlot = (day, time) => {
+    setSelectedTimeSlots((prev) => {
+      const newSlots = { ...prev }
+      if (newSlots[day].includes(time)) {
+        // Remove the time slot if it's already selected
+        newSlots[day] = newSlots[day].filter((t) => t !== time)
+      } else {
+        // Add the time slot if it's not selected
+        newSlots[day] = [...newSlots[day], time]
+      }
+      return newSlots
+    })
+  }
+
+  const handleSaveAvailability = async () => {
+    setIsSavingAvailability(true)
+
+    try {
+      // Convert selected time slots to availability format
+      const availabilityToSave = []
+
+      for (const [day, slots] of Object.entries(selectedTimeSlots)) {
+        if (slots.length > 0) {
+          // Sort slots to ensure they're in order
+          const sortedSlots = [...slots].sort()
+
+          // Group consecutive hours
+          let currentStart = null
+          let currentEnd = null
+
+          sortedSlots.forEach((slot) => {
+            const [hour] = slot.split(":").map(Number)
+
+            if (currentStart === null) {
+              currentStart = hour
+              currentEnd = hour + 1
+            } else if (hour === currentEnd) {
+              // Extend the current time range
+              currentEnd = hour + 1
+            } else {
+              // Save the current range and start a new one
+              availabilityToSave.push({
+                dayOfWeek: Number.parseInt(day),
+                startTime: `${currentStart.toString().padStart(2, "0")}:00`,
+                endTime: `${currentEnd.toString().padStart(2, "0")}:00`,
+              })
+
+              currentStart = hour
+              currentEnd = hour + 1
+            }
+          })
+
+          // Add the last range
+          if (currentStart !== null) {
+            availabilityToSave.push({
+              dayOfWeek: Number.parseInt(day),
+              startTime: `${currentStart.toString().padStart(2, "0")}:00`,
+              endTime: `${currentEnd.toString().padStart(2, "0")}:00`,
+            })
+          }
+        }
+      }
+
+      const result = await updateAvailability(availabilityToSave)
+
+      if (result.error) {
+        throw new Error(result.error)
+      }
+
+      setAvailabilityMode("view")
+      toast({
+        title: "Availability updated",
+        description: "Your availability has been saved successfully.",
+      })
+
+      // Update the availabilityData state
+      setAvailabilityData(availabilityToSave)
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update availability. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSavingAvailability(false)
     }
   }
 
@@ -227,12 +357,24 @@ export default function MentorPortalPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setAvailabilityMode(availabilityMode === "view" ? "edit" : "view")}
+                  onClick={() => {
+                    if (availabilityMode === "edit") {
+                      handleSaveAvailability()
+                    } else {
+                      setAvailabilityMode("edit")
+                    }
+                  }}
+                  disabled={isSavingAvailability}
                 >
                   {availabilityMode === "view" ? (
                     <>
                       <Edit className="h-4 w-4 mr-2" />
                       Edit
+                    </>
+                  ) : isSavingAvailability ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Saving...
                     </>
                   ) : (
                     <>
@@ -254,195 +396,39 @@ export default function MentorPortalPage() {
 
                   {availabilityMode === "view" ? (
                     <div className="grid grid-cols-7 gap-2">
-                      <div className="space-y-1">
-                        <div className="bg-primary/10 text-primary rounded p-1 text-xs text-center">9:00 AM</div>
-                        <div className="bg-primary/10 text-primary rounded p-1 text-xs text-center">10:00 AM</div>
-                        <div className="bg-primary/10 text-primary rounded p-1 text-xs text-center">2:00 PM</div>
-                      </div>
-                      <div className="space-y-1">
-                        <div className="bg-primary/10 text-primary rounded p-1 text-xs text-center">1:00 PM</div>
-                        <div className="bg-primary/10 text-primary rounded p-1 text-xs text-center">3:00 PM</div>
-                      </div>
-                      <div className="space-y-1">
-                        <div className="bg-primary/10 text-primary rounded p-1 text-xs text-center">9:00 AM</div>
-                        <div className="bg-primary/10 text-primary rounded p-1 text-xs text-center">11:00 AM</div>
-                      </div>
-                      <div className="space-y-1">
-                        <div className="bg-primary/10 text-primary rounded p-1 text-xs text-center">2:00 PM</div>
-                        <div className="bg-primary/10 text-primary rounded p-1 text-xs text-center">4:00 PM</div>
-                      </div>
-                      <div className="space-y-1">
-                        <div className="bg-primary/10 text-primary rounded p-1 text-xs text-center">10:00 AM</div>
-                        <div className="bg-primary/10 text-primary rounded p-1 text-xs text-center">1:00 PM</div>
-                      </div>
-                      <div className="text-center text-gray-400">Not Available</div>
-                      <div className="text-center text-gray-400">Not Available</div>
+                      {[1, 2, 3, 4, 5, 6, 0].map((day) => (
+                        <div key={day} className="space-y-1">
+                          {selectedTimeSlots[day].length > 0 ? (
+                            selectedTimeSlots[day].map((time) => (
+                              <div key={time} className="bg-primary/10 text-primary rounded p-1 text-xs text-center">
+                                {time.replace(":00", "")}:00
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-center text-gray-400 p-1">Not Available</div>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   ) : (
                     <div className="border rounded-lg p-4">
                       <p className="text-sm mb-4">Click on time slots to toggle availability:</p>
                       <div className="grid grid-cols-7 gap-2">
-                        <div className="space-y-1">
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            9:00 AM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            10:00 AM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            11:00 AM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            1:00 PM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            2:00 PM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            3:00 PM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            4:00 PM
-                          </Button>
-                        </div>
-                        <div className="space-y-1">
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            9:00 AM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            10:00 AM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            11:00 AM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            1:00 PM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            2:00 PM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            3:00 PM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            4:00 PM
-                          </Button>
-                        </div>
-                        <div className="space-y-1">
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            9:00 AM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            10:00 AM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            11:00 AM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            1:00 PM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            2:00 PM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            3:00 PM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            4:00 PM
-                          </Button>
-                        </div>
-                        <div className="space-y-1">
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            9:00 AM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            10:00 AM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            11:00 AM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            1:00 PM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            2:00 PM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            3:00 PM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            4:00 PM
-                          </Button>
-                        </div>
-                        <div className="space-y-1">
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            9:00 AM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            10:00 AM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            11:00 AM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            1:00 PM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            2:00 PM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            3:00 PM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            4:00 PM
-                          </Button>
-                        </div>
-                        <div className="space-y-1">
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            9:00 AM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            10:00 AM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            11:00 AM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            1:00 PM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            2:00 PM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            3:00 PM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            4:00 PM
-                          </Button>
-                        </div>
-                        <div className="space-y-1">
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            9:00 AM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            10:00 AM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            11:00 AM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            1:00 PM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            2:00 PM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            3:00 PM
-                          </Button>
-                          <Button variant="outline" size="sm" className="w-full text-xs">
-                            4:00 PM
-                          </Button>
-                        </div>
+                        {[1, 2, 3, 4, 5, 6, 0].map((day) => (
+                          <div key={day} className="space-y-1">
+                            {["09:00", "10:00", "11:00", "13:00", "14:00", "15:00", "16:00"].map((time) => (
+                              <Button
+                                key={time}
+                                variant={selectedTimeSlots[day].includes(time) ? "default" : "outline"}
+                                size="sm"
+                                className="w-full text-xs"
+                                onClick={() => toggleTimeSlot(day, time)}
+                              >
+                                {time.replace(":00", "")}:00
+                              </Button>
+                            ))}
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}

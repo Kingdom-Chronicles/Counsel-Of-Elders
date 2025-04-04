@@ -2,25 +2,33 @@
 
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
+import { getServerSession } from "next-auth/next"
 
 import { db } from "@/lib/db"
 import { authOptions } from "@/app/api/auth/[...nextauth]/route"
-// import { getSession } from "next-auth/react"
-import { getServerSession } from "next-auth/next"
-// import { authOptions } from "@/auth"
 
-const profileSchema = z.object({
-  title: z.string().optional(),
-  bio: z.string().optional(),
+// Replace the existing profileSchema with role-specific schemas
+const mentorProfileSchema = z.object({
+  title: z.string().min(1, "Title is required"),
+  bio: z.string().min(1, "Bio is required"),
   experience: z.coerce.number().optional(),
   coverImage: z.string().optional(),
   expertise: z.array(z.string()).optional(),
   categories: z.array(z.string()).optional(),
 })
 
+const menteeProfileSchema = z.object({
+  bio: z.string().min(1, "Bio is required"),
+  goals: z.string().optional(),
+  expertise: z.array(z.string()).optional(), // Used for interests in mentee profiles
+})
+
+// Update the updateProfile function to use different schemas based on role
 export async function updateProfile(formData: FormData) {
+  // Use getServerSession with authOptions
   const session = await getServerSession(authOptions)
 
+  console.log("session in updateProfile", session)
 
   if (!session || !session.user) {
     return {
@@ -28,14 +36,26 @@ export async function updateProfile(formData: FormData) {
     }
   }
 
-  const validatedFields = profileSchema.safeParse({
-    title: formData.get("title"),
-    bio: formData.get("bio"),
-    experience: formData.get("experience"),
-    coverImage: formData.get("coverImage"),
-    expertise: formData.getAll("expertise"),
-    categories: formData.getAll("categories"),
-  })
+  const isMentor = session.user.role === "MENTOR"
+
+  // Use different validation schemas based on user role
+  let validatedFields
+  if (isMentor) {
+    validatedFields = mentorProfileSchema.safeParse({
+      title: formData.get("title"),
+      bio: formData.get("bio"),
+      experience: formData.get("experience"),
+      coverImage: formData.get("coverImage"),
+      expertise: formData.getAll("expertise"),
+      categories: formData.getAll("categories"),
+    })
+  } else {
+    validatedFields = menteeProfileSchema.safeParse({
+      bio: formData.get("bio"),
+      goals: formData.get("goals"),
+      expertise: formData.getAll("expertise"), // Interests for mentees
+    })
+  }
 
   if (!validatedFields.success) {
     return {
@@ -43,8 +63,6 @@ export async function updateProfile(formData: FormData) {
       errors: validatedFields.error.flatten().fieldErrors,
     }
   }
-
-  const { title, bio, experience, coverImage, expertise, categories } = validatedFields.data
 
   try {
     // Get user profile
@@ -60,69 +78,88 @@ export async function updateProfile(formData: FormData) {
       }
     }
 
+    // Extract validated data
+    const data = validatedFields.data
 
-    // Update profile
-    await db.profile.update({
-      where: {
-        id: profile.id,
-      },
-      data: {
-        title,
-        bio,
-        experience,
-        coverImage,
-        expertise,
-      },
-    })
-
-    // Update categories if provided
-    if (categories && categories.length > 0) {
-      // First, remove all existing categories
+    // Update profile with role-specific fields
+    if (isMentor) {
       await db.profile.update({
         where: {
           id: profile.id,
         },
         data: {
-          categories: {
-            set: [],
-          },
+          title: data.title,
+          bio: data.bio,
+          experience: data.experience,
+          coverImage: data.coverImage,
+          expertise: data.expertise,
         },
       })
 
-
-      // Then, add new categories
-      for (const categoryName of categories) {
-        // Find or create category
-        let category = await db.category.findUnique({
-          where: {
-            name: categoryName,
-          },
-        })
-
-        if (!category) {
-          category = await db.category.create({
-            data: {
-              name: categoryName,
-            },
-          })
-        }
-
-        // Connect category to profile
+      // Update categories if provided (mentor only)
+      if (data.categories && data.categories.length > 0) {
+        // First, remove all existing categories
         await db.profile.update({
           where: {
             id: profile.id,
           },
           data: {
             categories: {
-              connect: {
-                id: category.id,
-              },
+              set: [],
             },
           },
         })
+
+        // Then, add new categories
+        for (const categoryName of data.categories) {
+          // Find or create category
+          let category = await db.category.findUnique({
+            where: {
+              name: categoryName,
+            },
+          })
+
+          if (!category) {
+            category = await db.category.create({
+              data: {
+                name: categoryName,
+              },
+            })
+          }
+
+          // Connect category to profile
+          await db.profile.update({
+            where: {
+              id: profile.id,
+            },
+            data: {
+              categories: {
+                connect: {
+                  id: category.id,
+                },
+              },
+            },
+          })
+        }
       }
+    } else {
+      // Update mentee profile
+      await db.profile.update({
+        where: {
+          id: profile.id,
+        },
+        data: {
+          bio: data.bio,
+          expertise: data.expertise, // Store interests in expertise field
+          // Store goals in a field that makes sense for your schema
+          // You might need to add a 'goals' field to your Profile model
+        },
+      })
     }
 
+    revalidatePath("/profile")
+    revalidatePath("/mentor-portal/profile")
+    revalidatePath("/dashboard")
     return { success: true }
   } catch (error) {
     console.error("Error updating profile:", error)
@@ -133,6 +170,7 @@ export async function updateProfile(formData: FormData) {
 }
 
 export async function addExperience(formData: FormData) {
+  // Use getServerSession with authOptions
   const session = await getServerSession(authOptions)
 
   if (!session || !session.user) {
@@ -181,7 +219,8 @@ export async function addExperience(formData: FormData) {
   return { success: true }
 }
 
-export async function updateAvailability(availabilityData: any) {
+// Add this function to handle updating availability
+export async function updateAvailability(availabilityData: any[]) {
   const session = await getServerSession(authOptions)
 
   if (!session || !session.user) {
@@ -190,39 +229,53 @@ export async function updateAvailability(availabilityData: any) {
     }
   }
 
-  // Get user profile
-  const profile = await db.profile.findUnique({
-    where: {
-      userId: session.user.id,
-    },
-  })
-
-  if (!profile) {
+  // Check if user is a mentor
+  if (session.user.role !== "MENTOR") {
     return {
-      error: "Profile not found",
+      error: "Only mentors can update availability",
     }
   }
 
-  // First, remove all existing availability
-  await db.availability.deleteMany({
-    where: {
-      profileId: profile.id,
-    },
-  })
-
-  // Then, add new availability
-  for (const item of availabilityData) {
-    await db.availability.create({
-      data: {
-        profileId: profile.id,
-        dayOfWeek: item.dayOfWeek,
-        startTime: item.startTime,
-        endTime: item.endTime,
+  try {
+    // Get user profile
+    const profile = await db.profile.findUnique({
+      where: {
+        userId: session.user.id,
       },
     })
-  }
 
-  revalidatePath("/mentor-portal")
-  return { success: true }
+    if (!profile) {
+      return {
+        error: "Profile not found",
+      }
+    }
+
+    // First, remove all existing availability
+    await db.availability.deleteMany({
+      where: {
+        profileId: profile.id,
+      },
+    })
+
+    // Then, add new availability
+    for (const item of availabilityData) {
+      await db.availability.create({
+        data: {
+          profileId: profile.id,
+          dayOfWeek: item.dayOfWeek,
+          startTime: item.startTime,
+          endTime: item.endTime,
+        },
+      })
+    }
+
+    revalidatePath("/mentor-portal")
+    return { success: true }
+  } catch (error) {
+    console.error("Error updating availability:", error)
+    return {
+      error: "Failed to update availability. Please try again.",
+    }
+  }
 }
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ChevronLeft, Clock, Loader2 } from "lucide-react"
@@ -24,11 +24,13 @@ export default function SchedulePage({ params }) {
   const [selectedTimeSlot, setSelectedTimeSlot] = useState(null)
   const [topics, setTopics] = useState("")
   const [timeSlots, setTimeSlots] = useState([])
+  const [availableDays, setAvailableDays] = useState([])
 
   // Fetch mentor data and availability
-  useState(() => {
+  useEffect(() => {
     const fetchMentor = async () => {
       try {
+        setIsLoading(true)
         const response = await fetch(`/api/mentors/${params.id}`)
         if (!response.ok) {
           throw new Error("Failed to fetch mentor")
@@ -36,34 +38,12 @@ export default function SchedulePage({ params }) {
         const data = await response.json()
         setMentor(data)
 
-        // Generate time slots based on mentor's availability
-        if (date) {
-          const dayOfWeek = date.getDay() // 0 = Sunday, 1 = Monday, etc.
-          const availableSlots = data.availability.filter((slot) => slot.dayOfWeek === dayOfWeek)
+        // Extract available days from mentor's availability
+        const availableDaysSet = new Set(data.availability?.map((slot) => slot.dayOfWeek) || [])
+        setAvailableDays(Array.from(availableDaysSet))
 
-          const slots = []
-          availableSlots.forEach((slot) => {
-            const [startHour, startMinute] = slot.startTime.split(":").map(Number)
-            const [endHour, endMinute] = slot.endTime.split(":").map(Number)
-
-            // Generate slots in 1-hour increments
-            let currentHour = startHour
-            const currentMinute = startMinute
-
-            while (currentHour < endHour || (currentHour === endHour && currentMinute < endMinute)) {
-              const timeString = `${currentHour.toString().padStart(2, "0")}:${currentMinute.toString().padStart(2, "0")}`
-              slots.push({
-                time: formatTime(timeString),
-                available: true,
-              })
-
-              // Increment by 1 hour
-              currentHour += 1
-            }
-          })
-
-          setTimeSlots(slots.length > 0 ? slots : generateDefaultTimeSlots())
-        }
+        // Update time slots when date changes
+        updateTimeSlotsForDate(date, data.availability || [])
       } catch (error) {
         toast({
           title: "Error",
@@ -76,7 +56,51 @@ export default function SchedulePage({ params }) {
     }
 
     fetchMentor()
-  }, [params.id, date, toast])
+  }, [params.id, toast])
+
+  // Update time slots when date changes
+  useEffect(() => {
+    if (mentor?.availability) {
+      updateTimeSlotsForDate(date, mentor.availability)
+    }
+  }, [date, mentor])
+
+  const updateTimeSlotsForDate = (selectedDate, availability) => {
+    if (!selectedDate) return
+
+    const dayOfWeek = selectedDate.getDay() // 0 = Sunday, 1 = Monday, etc.
+    const availableSlots = availability.filter((slot) => slot.dayOfWeek === dayOfWeek)
+
+    if (availableSlots.length === 0) {
+      setTimeSlots([])
+      setSelectedTimeSlot(null)
+      return
+    }
+
+    const slots = []
+    availableSlots.forEach((slot) => {
+      const [startHour, startMinute] = slot.startTime.split(":").map(Number)
+      const [endHour, endMinute] = slot.endTime.split(":").map(Number)
+
+      // Generate slots in 1-hour increments
+      let currentHour = startHour
+      const currentMinute = startMinute
+
+      while (currentHour < endHour || (currentHour === endHour && currentMinute < endMinute)) {
+        const timeString = `${currentHour.toString().padStart(2, "0")}:${currentMinute.toString().padStart(2, "0")}`
+        slots.push({
+          time: formatTime(timeString),
+          available: true,
+        })
+
+        // Increment by 1 hour
+        currentHour += 1
+      }
+    })
+
+    setTimeSlots(slots)
+    setSelectedTimeSlot(null) // Reset selected time slot when date changes
+  }
 
   // Helper function to format time (24h to 12h)
   const formatTime = (time24h) => {
@@ -84,19 +108,6 @@ export default function SchedulePage({ params }) {
     const period = hour >= 12 ? "PM" : "AM"
     const hour12 = hour % 12 || 12
     return `${hour12}:${minute.toString().padStart(2, "0")} ${period}`
-  }
-
-  // Generate default time slots if no availability data
-  const generateDefaultTimeSlots = () => {
-    return [
-      { time: "9:00 AM", available: true },
-      { time: "10:00 AM", available: true },
-      { time: "11:00 AM", available: false },
-      { time: "1:00 PM", available: true },
-      { time: "2:00 PM", available: true },
-      { time: "3:00 PM", available: false },
-      { time: "4:00 PM", available: true },
-    ]
   }
 
   const handleSubmit = async (e) => {
@@ -213,34 +224,42 @@ export default function SchedulePage({ params }) {
                             onSelect={setDate}
                             className="mx-auto"
                             disabled={(date) => {
-                              // Disable weekends and past dates
+                              // Disable past dates and days when mentor is not available
+                              const dayOfWeek = date.getDay()
                               return (
-                                date < new Date(new Date().setHours(0, 0, 0, 0)) ||
-                                date.getDay() === 0 ||
-                                date.getDay() === 6
+                                date < new Date(new Date().setHours(0, 0, 0, 0)) || !availableDays.includes(dayOfWeek)
                               )
                             }}
                           />
                         </div>
+                        {availableDays.length === 0 && (
+                          <p className="text-sm text-amber-600 mt-2">
+                            This mentor hasn't set their availability yet. Please check back later or message them.
+                          </p>
+                        )}
                       </div>
                       <div>
                         <h3 className="font-medium mb-2">Available Time Slots</h3>
                         {date ? (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {timeSlots.map((slot, index) => (
-                              <Button
-                                key={index}
-                                variant={selectedTimeSlot === slot.time ? "default" : "outline"}
-                                className={cn("justify-start", !slot.available && "opacity-50 cursor-not-allowed")}
-                                disabled={!slot.available}
-                                onClick={() => setSelectedTimeSlot(slot.time)}
-                                type="button"
-                              >
-                                <Clock className="mr-2 h-4 w-4" />
-                                {slot.time}
-                              </Button>
-                            ))}
-                          </div>
+                          timeSlots.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {timeSlots.map((slot, index) => (
+                                <Button
+                                  key={index}
+                                  variant={selectedTimeSlot === slot.time ? "default" : "outline"}
+                                  className={cn("justify-start", !slot.available && "opacity-50 cursor-not-allowed")}
+                                  disabled={!slot.available}
+                                  onClick={() => setSelectedTimeSlot(slot.time)}
+                                  type="button"
+                                >
+                                  <Clock className="mr-2 h-4 w-4" />
+                                  {slot.time}
+                                </Button>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-gray-500">No available time slots for this date.</p>
+                          )
                         ) : (
                           <p className="text-sm text-gray-500">Please select a date first</p>
                         )}
